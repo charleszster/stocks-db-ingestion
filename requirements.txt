@@ -1,0 +1,4 @@
+requests>=2.31
+psycopg2-binary>=2.9
+pandas>=2.0
+pyfinviz>=1.2.0
