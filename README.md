@@ -7,6 +7,23 @@ This phase is intentionally narrow in scope and opinionated by design.
 
 ---
 
+## Relationship to Phase 1
+
+This repository assumes that **Phase 1 (Reference Data & Schema Design)**
+has already been completed.
+
+Phase 1 defines:
+
+- The core database schema
+- Identifier and entity modeling decisions
+- Development universe bootstrapping
+- Architectural constraints on ingestion
+
+Phase 2 does not modify these foundations.
+It operates strictly within the contracts defined by Phase 1.
+
+---
+
 ## Purpose
 
 The goal of this project is to build a reproducible, auditable, long-lived
@@ -25,6 +42,25 @@ This repository is NOT responsible for:
 - Strategy logic
 
 Those belong in later phases and separate repositories.
+
+---
+
+## What "Ingestion" Means in Phase 2
+
+In Phase 2, ingestion refers specifically to:
+
+- Fetching raw, unadjusted market data
+- Persisting it exactly as received
+- Recording execution metadata and lineage
+
+It does NOT include:
+
+- Price adjustments
+- Derived views
+- Business logic
+- Data interpretation
+
+Those concerns begin in Phase 3.
 
 ---
 
