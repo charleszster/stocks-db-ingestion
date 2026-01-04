@@ -194,6 +194,13 @@ venv, conda, or poetry are all acceptable.
 
 ---
 
+Phase 2 decision:
+stocks_research.prices_daily.security_id is not FK-enforced.
+Raw prices are ingested without a securities master.
+Referential integrity is restored in Phase 3.
+
+---
+
 ## Running the Ingestion (Legacy Scripts)
 
 Prices:
