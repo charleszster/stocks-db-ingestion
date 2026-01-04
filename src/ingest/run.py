@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from psycopg2.extras import Json
 
 from ingest.db import get_conn
+from ingest.jobs.prices_daily import run as run_prices_daily
 from ingest.util import get_git_commit, get_host_name, get_user_name
 from pathlib import Path
 from dotenv import load_dotenv
@@ -13,7 +14,9 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / ".env")
 
-
+JOB_REGISTRY = {
+    "prices_daily": run_prices_daily,
+}
 
 def start_run(conn, notes=None):
     run_id = str(uuid.uuid4())
@@ -140,10 +143,16 @@ def main():
             params={"invoked_at": datetime.now(timezone.utc).isoformat()},
         )
 
-        # 🔹 Placeholder: actual ingestion logic goes here
-        # For now, we just succeed immediately
+        job_fn = JOB_REGISTRY[args.job]
+        result = job_fn(conn, job_id)
 
-        finish_job(conn, job_id, status="success")
+        finish_job(
+            conn,
+            job_id,
+            status="success",
+            rows_upserted=result.get("rows_upserted", 0),
+            api_calls=result.get("api_calls", 0),
+        )
 
     except Exception as e:
         overall_status = "failed"
