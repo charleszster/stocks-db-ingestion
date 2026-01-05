@@ -359,3 +359,18 @@ This repository enforces that contract.
 - Makes it explicit that:
   - The S&P 500 list was only a dev tool
   - The real universe is rule-based and time-aware
+
+## Phase 2 Status (Complete)
+
+Phase 2 ingests raw, unadjusted daily prices into PostgreSQL.
+
+- Data source: Massive
+- Table: stocks_research.prices_daily
+- Ingestion is idempotent (ON CONFLICT DO NOTHING)
+- security_id FK is intentionally relaxed in Phase 2
+- Job execution is auditable via ingestion.ingestion_run / ingestion_job
+
+Phase 3 introduces:
+- securities master
+- referential integrity
+- corporate actions
