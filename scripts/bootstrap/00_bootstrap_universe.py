@@ -9,6 +9,9 @@ import psycopg2
 from psycopg2.extras import execute_batch
 
 from common import getenv, requests_get_json
+from dotenv import load_dotenv
+
+load_dotenv()
 
 BASE_URL = "https://api.massive.com"
 SCHEMA = os.getenv("STOCKS_SCHEMA", "stocks_research")
@@ -18,19 +21,40 @@ FINVIZ_ENRICH = os.getenv("FINVIZ_ENRICH", "1") == "1"
 TICKER_OVERVIEW_PATH = "/v3/reference/tickers/{ticker}"
 
 
-def load_sp500_tickers_from_csv(path="sp500_tickers.csv") -> list[str]:
-    tickers = []
-    with open(path, newline="", encoding="utf-8") as f:
+from pathlib import Path
+
+def load_universe_tickers_from_csv() -> List[str]:
+    """
+    Load tickers from a CSV universe file.
+
+    Default: config/universe_dev.csv
+    Override: UNIVERSE_CSV in environment/.env
+      e.g. UNIVERSE_CSV=config/universe_dev.csv
+    The CSV must have a header row containing a 'ticker' column.
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+    rel = os.getenv("UNIVERSE_CSV", "config/universe_dev.csv")
+    path = (repo_root / rel).resolve()
+
+    if not path.exists():
+        raise RuntimeError(f"Universe file not found: {path}")
+
+    tickers: List[str] = []
+    with path.open(newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
-        if "ticker" not in reader.fieldnames:
-            raise RuntimeError("sp500_tickers.csv must have a 'ticker' column")
+        if not reader.fieldnames or "ticker" not in reader.fieldnames:
+            raise RuntimeError(f"{path.name} must contain a 'ticker' column header")
+
         for row in reader:
             t = (row.get("ticker") or "").strip()
             if t:
                 tickers.append(t)
+
     if not tickers:
-        raise RuntimeError("sp500_tickers.csv is empty")
+        raise RuntimeError(f"{path.name} contains no tickers")
+
     return tickers
+
 
 
 def get_ticker_overview(api_key: str, ticker: str) -> Dict[str, Any]:
@@ -103,9 +127,9 @@ def main():
     api_key = getenv("MASSIVE_API_KEY")
     dsn = getenv("PG_DSN")
 
-    print("Loading S&P 500 tickers from CSV...")
-    tickers = load_sp500_tickers_from_csv()
-    print(f"Loaded {len(tickers)} tickers from sp500_tickers.csv")
+    print("Loading tickers from CSV...")
+    tickers = load_universe_tickers_from_csv()
+    print(f"Loaded {len(tickers)} tickers from universe_dev.csv")
 
 
     enriched: List[Dict[str, Any]] = []

@@ -5,9 +5,9 @@ import uuid
 from datetime import datetime, timezone
 from psycopg2.extras import Json
 
-from ingest.db import get_conn
-from ingest.jobs.prices_daily import run as run_prices_daily
-from ingest.util import get_git_commit, get_host_name, get_user_name
+from .db import get_conn
+from .jobs.prices_daily import run as run_prices_daily
+from .util import get_git_commit, get_host_name, get_user_name
 from pathlib import Path
 from dotenv import load_dotenv
 

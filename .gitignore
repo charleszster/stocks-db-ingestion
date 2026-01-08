@@ -9,3 +9,4 @@ data/
 .pgpass
 .vscode/
 .idea/
+config/universe_selected.json

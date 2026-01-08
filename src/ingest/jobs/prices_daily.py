@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import json
+from pathlib import Path
 from datetime import date
 from typing import Any, Dict, List
 
@@ -29,9 +30,23 @@ AGGS_PATH = "/v2/aggs/ticker/{ticker}/range/1/day/{from_date}/{to_date}"
 
 
 def load_tickers() -> List[str]:
-    p = os.path.join(os.path.dirname(__file__), "top50_tickers.json")
-    with open(p, "r", encoding="utf-8") as f:
-        return json.load(f)
+    """
+    Load the selected universe produced by bootstrap.
+    """
+    repo_root = Path(__file__).resolve().parents[3]
+    rel = os.getenv("UNIVERSE_SELECTED", "config/universe_selected.json")
+    path = (repo_root / rel).resolve()
+
+    if not path.exists():
+        raise RuntimeError(f"Universe selection file not found: {path}")
+
+    with path.open("r", encoding="utf-8") as f:
+        tickers = json.load(f)
+
+    if not tickers:
+        raise RuntimeError("Universe selection file is empty")
+
+    return tickers
 
 
 def security_id_for_ticker(cur, ticker: str) -> int:
@@ -95,27 +110,38 @@ def upsert_prices(conn, ticker: str, bars: List[Dict[str, Any]]) -> int:
     return len(bars)
 
 
-def main():
+def _run_prices_daily(conn):
     api_key = getenv("MASSIVE_API_KEY")
-    dsn = getenv("PG_DSN")
 
     tickers = load_tickers()
     from_date = iso_years_ago(YEARS)
     to_date = iso_today()
 
-    conn = psycopg2.connect(dsn)
-    conn.autocommit = False
-    try:
-        total = 0
-        for i, t in enumerate(tickers, 1):
-            bars = fetch_daily_bars(api_key, t, from_date, to_date)
-            n = upsert_prices(conn, t, bars)
-            total += n
-            print(f"{i:>2}/{len(tickers)} {t}: {n} daily bars inserted/updated")
-        print(f"Done. Total bars inserted/updated: {total}")
-    finally:
-        conn.close()
+    total = 0
+    for i, t in enumerate(tickers, 1):
+        bars = fetch_daily_bars(api_key, t, from_date, to_date)
+        n = upsert_prices(conn, t, bars)
+        total += n
+        print(f"{i:>2}/{len(tickers)} {t}: {n} daily bars inserted/updated")
+
+    print(f"Done. Total bars inserted/updated: {total}")
+
+
+def run(conn, job_id=None):
+    """
+    Phase-3 ingestion entrypoint.
+    The runner owns the DB connection.
+    """
+    _run_prices_daily(conn)
+
 
 
 if __name__ == "__main__":
-    main()
+    dsn = getenv("PG_DSN")
+    conn = psycopg2.connect(dsn)
+    conn.autocommit = False
+    try:
+        _run_prices_daily(conn)
+    finally:
+        conn.close()
+
