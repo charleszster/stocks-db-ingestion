@@ -57,15 +57,42 @@ def upsert_splits(conn, ticker: str, splits: List[Dict[str, Any]]) -> int:
 
     sql = f"""
     INSERT INTO {SCHEMA}.corporate_actions
-      (security_id, action_date, action_type, value_num, value_den, cash_amount, currency, source, raw_payload)
+      (
+        security_id,
+        action_date,
+        action_type,
+        value_num,
+        value_den,
+        cash_amount,
+        currency,
+        source,
+        provider,
+        provider_action_id,
+        raw_payload
+      )
     VALUES
-      (%s, %s, 'split', %s, %s, NULL, NULL, 'massive', %s)
-    ON CONFLICT (security_id, action_date, action_type) DO UPDATE SET
-      value_num = EXCLUDED.value_num,
-      value_den = EXCLUDED.value_den,
-      source = EXCLUDED.source,
-      raw_payload = EXCLUDED.raw_payload;
+      (
+        %s,        -- security_id
+        %s,        -- action_date
+        'split',   -- action_type
+        %s,        -- value_num
+        %s,        -- value_den
+        NULL,      -- cash_amount
+        NULL,      -- currency
+        'massive', -- source
+        'massive', -- provider
+        %s,        -- provider_action_id
+        %s         -- raw_payload
+      )
+    ON CONFLICT (provider, provider_action_id) DO UPDATE SET
+        security_id   = EXCLUDED.security_id,
+        action_date   = EXCLUDED.action_date,
+        value_num     = EXCLUDED.value_num,
+        value_den     = EXCLUDED.value_den,
+        source        = EXCLUDED.source,
+        raw_payload   = EXCLUDED.raw_payload;
     """
+
 
     with conn.cursor() as cur:
         sid = security_id_for_ticker(cur, ticker)
@@ -76,7 +103,15 @@ def upsert_splits(conn, ticker: str, splits: List[Dict[str, Any]]) -> int:
             split_from = s.get("split_from")
             if not dt or split_to is None or split_from is None:
                 continue
-            rows.append((sid, dt, split_to, split_from, Json(s)))
+            rows.append((
+                sid,
+                dt,
+                split_to,
+                split_from,
+                s["id"],   # provider_action_id
+                Json(s),
+            ))
+
         execute_batch(cur, sql, rows, page_size=2000)
 
     conn.commit()
