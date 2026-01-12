@@ -6,6 +6,8 @@ from pathlib import Path
 from datetime import date
 from typing import Any, Dict, List
 
+from ingest.universe import load_tickers
+
 import psycopg2
 from psycopg2.extras import execute_batch
 
@@ -27,26 +29,6 @@ SCHEMA = os.getenv("STOCKS_SCHEMA", "stocks_research")
 YEARS = int(os.getenv("YEARS", "5"))
 
 AGGS_PATH = "/v2/aggs/ticker/{ticker}/range/1/day/{from_date}/{to_date}"
-
-
-def load_tickers() -> List[str]:
-    """
-    Load the selected universe produced by bootstrap.
-    """
-    repo_root = Path(__file__).resolve().parents[3]
-    rel = os.getenv("UNIVERSE_SELECTED", "config/universe_selected.json")
-    path = (repo_root / rel).resolve()
-
-    if not path.exists():
-        raise RuntimeError(f"Universe selection file not found: {path}")
-
-    with path.open("r", encoding="utf-8") as f:
-        tickers = json.load(f)
-
-    if not tickers:
-        raise RuntimeError("Universe selection file is empty")
-
-    return tickers
 
 
 def security_id_for_ticker(cur, ticker: str) -> int:
