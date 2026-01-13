@@ -7,6 +7,8 @@ from psycopg2.extras import Json
 
 from .db import get_conn
 from .jobs.prices_daily import run as run_prices_daily
+from .jobs.adjustment_factors import run as run_adjustment_factors
+
 from .util import get_git_commit, get_host_name, get_user_name
 from pathlib import Path
 from dotenv import load_dotenv
@@ -16,7 +18,9 @@ load_dotenv(ROOT / ".env")
 
 JOB_REGISTRY = {
     "prices_daily": run_prices_daily,
+    "adjustment_factors": run_adjustment_factors,
 }
+
 
 def start_run(conn, notes=None):
     run_id = str(uuid.uuid4())

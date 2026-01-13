@@ -6,7 +6,7 @@ from pathlib import Path
 from datetime import date
 from typing import Any, Dict, List
 
-from ingest.universe import load_tickers
+from src.ingest.universe import load_tickers
 
 import psycopg2
 from psycopg2.extras import execute_batch
