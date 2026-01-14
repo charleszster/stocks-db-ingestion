@@ -43,7 +43,23 @@ JOBS: Dict[str, Dict[str, List[str]]] = {
             ("corporate_actions", "security_id", "securities"),
         ],
     },
+
+    # ------------------------------------------------------------
+    # Phase 4A: adjustment_factors_daily
+    # ------------------------------------------------------------
+    "adjustment_factors_daily": {
+        "requires_tables": [
+            "companies",
+            "securities",
+            "prices_daily",
+            "adjustment_factors_daily",
+        ],
+        "orphan_checks": [
+            ("adjustment_factors_daily", "security_id", "securities"),
+        ],
+    },
 }
+
 
 
 # -----------------------------
