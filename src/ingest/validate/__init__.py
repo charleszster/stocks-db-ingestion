@@ -1,1 +1,2 @@
 from .corporate_actions import validate_corporate_actions
+from .fundamentals_quarterly_raw import validate_fundamentals_quarterly_raw

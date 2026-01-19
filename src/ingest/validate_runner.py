@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from src.ingest.validate_base import ValidationResult
 from src.ingest.validate.corporate_actions import validate_corporate_actions
+from src.ingest.validate.fundamentals_quarterly_raw import (
+    validate_fundamentals_quarterly_raw,
+)
 
 import os
 import sys
@@ -57,6 +60,16 @@ JOBS: Dict[str, Dict[str, List[str]]] = {
         "orphan_checks": [
             ("adjustment_factors_daily", "security_id", "securities"),
         ],
+    },
+    # ------------------------------------------------------------
+    # Phase 4B: fundamentals_quarterly_raw
+    # ------------------------------------------------------------
+    "fundamentals_quarterly_raw": {
+        "requires_tables": [
+            "securities",
+            "fundamentals_quarterly_raw",
+        ],
+        "orphan_checks": [],
     },
 }
 
@@ -171,7 +184,7 @@ def validate_job(job_name: str):
 
     try:
         with conn.cursor() as cur:
-            print(f"\nValidating Phase-3 invariants for job: {job_name}\n")
+            print(f"\nValidating invariants for job: {job_name}\n")
 
             # Structural checks
             require_tables_exist(cur, SCHEMA, cfg["requires_tables"])
@@ -185,6 +198,17 @@ def validate_job(job_name: str):
             # FK integrity
             for table, fk_col, ref_table in cfg.get("orphan_checks", []):
                 require_no_orphans(cur, SCHEMA, table, fk_col, ref_table)
+
+            # Phase-specific semantic validation
+            if job_name == "fundamentals_quarterly_raw":
+                result = validate_fundamentals_quarterly_raw(conn)
+                if not result.ok:
+                    for check in result.checks:
+                        if not check.passed:
+                            raise RuntimeError(
+                                f"{check.name} failed: {check.details}"
+                            )
+                print("✔ Phase 4B semantic checks passed")
 
             print(f"\nSAFE TO RUN: {job_name}\n")
 
