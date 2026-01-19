@@ -16,10 +16,14 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / ".env")
 
-JOB_REGISTRY = {
+from .jobs.fundamentals_quarterly_raw import run as run_fundamentals_quarterly_raw
+
+JOBS = {
     "prices_daily": run_prices_daily,
     "adjustment_factors": run_adjustment_factors,
+    "fundamentals_quarterly_raw": run_fundamentals_quarterly_raw,
 }
+
 
 
 def start_run(conn, notes=None):
@@ -132,6 +136,9 @@ def main():
     parser.add_argument("--notes")
     args = parser.parse_args()
 
+    if args.job not in JOBS:
+        raise ValueError(f"Unknown job {args.job}. Valid: {sorted(JOBS.keys())}")
+
     conn = get_conn()
 
     run_id = start_run(conn, notes=args.notes)
@@ -147,7 +154,7 @@ def main():
             params={"invoked_at": datetime.now(timezone.utc).isoformat()},
         )
 
-        job_fn = JOB_REGISTRY[args.job]
+        job_fn = JOBS[args.job]
         result = job_fn(conn, job_id)
 
         finish_job(
