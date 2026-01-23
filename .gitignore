@@ -10,3 +10,4 @@ data/
 .vscode/
 .idea/
 config/universe_selected.json
+/backups/
