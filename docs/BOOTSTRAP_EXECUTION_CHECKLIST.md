@@ -1,132 +1,153 @@
-# Bootstrap Execution Checklist
-Repo: stocks-db-ingestion  
-Schema: stocks_research  
-
-Purpose:
-Safely bootstrap a fresh database from a dead stop and fully populate it
-with canonical market data (Phases 1–4B).
-
-This checklist is meant to be followed sequentially, without improvisation.
+# BOOTSTRAP_EXECUTION_CHECKLIST.md  
+**Stock DB Project — Bootstrap & Operational Hardening**
 
 ---
 
-## Pre-flight (before touching the database)
+## Purpose
 
-- [ ] Confirm correct repo and branch
-- [ ] Confirm environment variables are set (.env)
-- [ ] Confirm database target (host, DB name, schema)
-- [ ] Confirm no active ingestion jobs are running
-- [ ] Confirm this is a clean bootstrap or an intentional rebuild
+This checklist defines the **authoritative execution sequence** for rebuilding,
+validating, and populating the `stocks_research` database from a clean state.
 
-If unsure — STOP.
+If completed successfully, it proves that the system is:
+- Rebuildable
+- Recoverable
+- Operationally safe
+- Ready for large-scale ingestion
 
----
-
-## Step 0 — Database creation (external)
-
-Outside this repo:
-- Create empty PostgreSQL database
-- Ensure role/user permissions are correct
-
-This repo does NOT create databases.
+This is an **execution checklist**, not a design document.
 
 ---
 
-## Step 1 — Schema creation
+## Preconditions
 
-Apply schema-level SQL in this order:
-
-1. Admin / ingestion schema (if applicable)
-   - `sql/admin/010_ingestion_schema.sql`
-
-2. Core research schema
-   - `sql/stock_research_schema.sql`
-   - Any required extensions
-
-Verification:
-- [ ] `stocks_research` schema exists
-- [ ] Tables exist but are empty
+- PostgreSQL installed and running
+- Client tools available on `PATH`:
+  - `psql`
+  - `pg_dump`
+  - `pg_restore`
+  - `createdb`
+  - `dropdb`
+- Python environment available
+- Repo cloned locally
+- Working directory: repo root
+- Postgres connection configured via environment variables:
+  - `PGHOST`
+  - `PGPORT`
+  - `PGDATABASE`
+  - `PGUSER`
+  - `PGPASSWORD`
 
 ---
 
-## Step 2 — Phase 1: Identity bootstrap
+## Phase 0 — Environment Verification
 
-Run:
-python scripts/bootstrap/00_bootstrap_universe.py
+- [ ] Activate Python environment
+- [ ] Verify Python version
+- [ ] Install dependencies
+  ```powershell
+  pip install -r requirements.txt
 
-Creates:
-- companies
-- securities
-- ticker_history
-
-Verification:
-- securities populated
-- composite_figi populated
-- ticker_history non-empty
-
-### Step 3 — Phase 2: Raw daily prices
-
-Validation:
-python -m src.ingest.validate_runner prices_daily
-
-Ingestion:
-python -m src.ingest.run prices_daily
-
-Verification:
-- prices_daily populated
-- no orphan security_id values
-- expected date range present
-
-### Step 4 — Phase 3: Corporate actions
-
-Validation:
-python -m src.ingest.validate_runner corporate_actions
-
-Ingestion:
-python -m src.ingest.run corporate_actions
-
-Verification:
-- corporate_actions populated
-- no orphan security_id values
-
-### Step 5 — Phase 4A: Adjustment factors
-
-Validation:
-python -m src.ingest.validate_runner adjustment_factors_daily
-
-Ingestion:
-python -m src.ingest.run adjustment_factors_daily
-
-Verification:
-- adjustment_factors_daily populated
-- adjusted prices view queries correctly
+ - Verify ingestion runner executes
+ python -m src.ingest.run --help
 
 
-### Step 6 — Phase 4B: Quarterly fundamentals (raw)
+## Phase 1 — Database Creation
 
-Validation:
-python -m src.ingest.validate_runner fundamentals_quarterly_raw
+- Ensure target DB does not exist
+ dropdb stocks_research
 
-Ingestion:
-python -m src.ingest.run fundamentals_quarterly_raw
+- Create empty database
+createdb stocks_research
 
-Verification:
-- fundamentals_quarterly_raw populated
-- revenue and diluted EPS derivable
-- no orphan securities
+- Verify connectivity
+psql stocks_research -c "SELECT 1;"
 
 
-### Step 7 — Post-bootstrap validation
+## Phase 2 — Schema Build
+- Apply all schema migrations in order
+-  Verify schemas exist (ingestion, stocks_research)
+-  Verify core tables exist
+SELECT COUNT(*) FROM stocks_research.securities;
 
-- All validation jobs pass
-- Row counts are non-zero and reasonable
-- No ingestion errors logged
-- Adjusted prices view stable
+- Verify views build cleanly
+SELECT COUNT(*) FROM stocks_research.prices_daily_adjusted_v;
 
-### Definition of “bootstrap complete”
-Bootstrap is complete when:
-- All phases 1–4B are populated
-- All phase gates pass
-- No manual fixes were required
-- Database can be dropped and recreated using this checklist
+## Phase 3 — Pre-Ingestion Safety Backup
+-  Create backups/ directory (gitignored)
+-  Run full backup
+$ts = Get-Date -Format "yyyyMMdd_HHmm"
+pg_dump `
+  --format=custom `
+  --compress=9 `
+  --no-owner `
+  --no-privileges `
+  -f backups\full_$ts.dump `
+  stocks_research
 
+-  Copy backup to Dropbox
+-  Verify archive
+pg_restore --list backups\full_$ts.dump
+
+## Phase 4 — Ingestion Dry Runs (Empty DB)
+Run each job once, in isolation.
+- Securities master
+- Ticker history
+- Prices (daily)
+- Corporate actions
+- Adjustment factors
+- Fundamentals (raw)
+- Fundamentals (derived / YoY)
+
+Rules:
+- No uncaught exceptions
+- Logging must be clean
+- Jobs must be idempotent
+
+## Phase 5 — Validation Pass
+-  Run validation runners
+-  Verify no orphaned rows
+-  Verify foreign key integrity
+-  Verify adjustment continuity
+-  Verify derived tables populate correctly
+
+Failure here blocks progression.
+
+## Phase 6 — Production Ingestion (5-Year Run)
+- Define universe (written, explicit)
+- Define start/end dates
+- Run prices ingestion (5 years)
+- Run corporate actions
+- Run adjustment factors
+- Run fundamentals
+- Run derived metrics
+
+Rules:
+- No manual DB edits
+- Errors logged, not ignored
+- Failed symbols tracked explicitly
+
+## Phase 7 — Post-Ingestion Validation
+- Row count sanity checks
+- Date coverage verification
+- FK and uniqueness checks
+- View correctness validation
+
+## Phase 8 — Final Safety Backup
+- Run full backup
+- Copy to Dropbox
+- Verify archive
+- Record filename and timestamp
+
+This backup represents the first production-grade dataset.
+
+## Definition of Done
+Bootstrap is considered complete when:
+- Database can be dropped and rebuilt from scratch
+- Full restore works without errors
+- Validation passes cleanly
+- 5-year dataset is populated and trusted
+- System can survive operator error
+
+At this point:
+- Tag the repo
+- Proceed to research, analytics, or ML work
