@@ -8,7 +8,10 @@ BEGIN;
 -- Core: identity
 -- ----------
 
-CREATE TABLE IF NOT EXISTS companies (
+CREATE SCHEMA IF NOT EXISTS stocks_research;
+CREATE SCHEMA IF NOT EXISTS ingestion;
+
+CREATE TABLE IF NOT EXISTS stocks_research.companies (
   composite_figi   TEXT PRIMARY KEY,
   name             TEXT NOT NULL,
   country          TEXT,
@@ -17,9 +20,9 @@ CREATE TABLE IF NOT EXISTS companies (
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS securities (
+CREATE TABLE IF NOT EXISTS stocks_research.securities (
   security_id      BIGSERIAL PRIMARY KEY,
-  composite_figi   TEXT NOT NULL REFERENCES companies(composite_figi) ON UPDATE CASCADE ON DELETE RESTRICT,
+  composite_figi   TEXT NOT NULL REFERENCES stocks_research.companies(composite_figi) ON UPDATE CASCADE ON DELETE RESTRICT,
   primary_exchange TEXT,
   currency         TEXT,
   start_date       DATE,
@@ -29,8 +32,8 @@ CREATE TABLE IF NOT EXISTS securities (
 );
 
 -- Ticker ↔ security mapping over time (identity resolution only)
-CREATE TABLE IF NOT EXISTS ticker_history (
-  security_id  BIGINT NOT NULL REFERENCES securities(security_id) ON UPDATE CASCADE ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS stocks_research.ticker_history (
+  security_id  BIGINT NOT NULL REFERENCES stocks_research.securities(security_id) ON UPDATE CASCADE ON DELETE CASCADE,
   ticker       TEXT   NOT NULL,
   exchange     TEXT   NOT NULL,
   start_date   DATE   NOT NULL,
@@ -41,14 +44,14 @@ CREATE TABLE IF NOT EXISTS ticker_history (
 );
 
 CREATE INDEX IF NOT EXISTS ticker_history_lookup_idx
-  ON ticker_history (ticker, exchange, start_date, end_date);
+  ON stocks_research.ticker_history (ticker, exchange, start_date, end_date);
 
 -- ----------
 -- Core: raw market data (immutable/insert-only by policy)
 -- ----------
 
-CREATE TABLE IF NOT EXISTS prices_daily (
-  security_id  BIGINT NOT NULL REFERENCES securities(security_id) ON UPDATE CASCADE ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS stocks_research.prices_daily (
+  security_id  BIGINT NOT NULL REFERENCES stocks_research.securities(security_id) ON UPDATE CASCADE ON DELETE CASCADE,
   trade_date   DATE   NOT NULL,
   open         NUMERIC(18,6),
   high         NUMERIC(18,6),
@@ -64,11 +67,11 @@ CREATE TABLE IF NOT EXISTS prices_daily (
 );
 
 CREATE INDEX IF NOT EXISTS prices_daily_trade_date_idx
-  ON prices_daily (trade_date);
+  ON stocks_research.prices_daily (trade_date);
 
 -- Corporate actions: events that affect interpretation (do NOT mutate prices_daily)
-CREATE TABLE IF NOT EXISTS corporate_actions (
-  security_id  BIGINT NOT NULL REFERENCES securities(security_id) ON UPDATE CASCADE ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS stocks_research.corporate_actions (
+  security_id  BIGINT NOT NULL REFERENCES stocks_research.securities(security_id) ON UPDATE CASCADE ON DELETE CASCADE,
   action_date  DATE   NOT NULL,
   action_type  TEXT   NOT NULL, -- 'split', 'cash_dividend', 'spin_off', 'merger', etc.
   value_num    NUMERIC,         -- e.g. 2 for 2-for-1 split
@@ -82,11 +85,11 @@ CREATE TABLE IF NOT EXISTS corporate_actions (
 );
 
 CREATE INDEX IF NOT EXISTS corporate_actions_security_date_idx
-  ON corporate_actions (security_id, action_date);
+  ON stocks_research.corporate_actions (security_id, action_date);
 
 -- Vendor fundamentals (raw, flexible)
-CREATE TABLE IF NOT EXISTS fundamentals_quarterly_raw (
-  composite_figi TEXT NOT NULL REFERENCES companies(composite_figi) ON UPDATE CASCADE ON DELETE RESTRICT,
+CREATE TABLE IF NOT EXISTS stocks_research.fundamentals_quarterly_raw (
+  composite_figi TEXT NOT NULL REFERENCES stocks_research.companies(composite_figi) ON UPDATE CASCADE ON DELETE RESTRICT,
   fiscal_period  TEXT NOT NULL,         -- e.g. '2024Q3'
   report_date    DATE,
   metric_name    TEXT NOT NULL,         -- e.g. 'revenue', 'eps_diluted'
@@ -97,7 +100,7 @@ CREATE TABLE IF NOT EXISTS fundamentals_quarterly_raw (
 );
 
 CREATE INDEX IF NOT EXISTS fundamentals_raw_report_date_idx
-  ON fundamentals_quarterly_raw (report_date);
+  ON stocks_research.fundamentals_quarterly_raw (report_date);
 
 -- ----------
 -- Adjustment infrastructure (derived; rebuildable)
@@ -106,8 +109,8 @@ CREATE INDEX IF NOT EXISTS fundamentals_raw_report_date_idx
 -- Split adjustment factors for each security/date
 -- split_factor: multiply raw price by split_factor to get split-adjusted price
 -- volume_factor: multiply raw volume by volume_factor to get split-adjusted volume
-CREATE TABLE IF NOT EXISTS adjustment_factors_daily (
-  security_id    BIGINT NOT NULL REFERENCES securities(security_id) ON UPDATE CASCADE ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS stocks_research.adjustment_factors_daily (
+  security_id    BIGINT NOT NULL REFERENCES stocks_research.securities(security_id) ON UPDATE CASCADE ON DELETE CASCADE,
   trade_date     DATE   NOT NULL,
   split_factor   NUMERIC NOT NULL,
   volume_factor  NUMERIC NOT NULL,
@@ -117,15 +120,15 @@ CREATE TABLE IF NOT EXISTS adjustment_factors_daily (
 );
 
 CREATE INDEX IF NOT EXISTS adjustment_factors_trade_date_idx
-  ON adjustment_factors_daily (trade_date);
+  ON stocks_research.adjustment_factors_daily (trade_date);
 
 -- ----------
 -- Research-ready tables (opinionated)
 -- ----------
 
 -- The subset of fundamentals you actually use (YoY only, no TTM)
-CREATE TABLE IF NOT EXISTS fundamentals_yoy (
-  composite_figi  TEXT NOT NULL REFERENCES companies(composite_figi) ON UPDATE CASCADE ON DELETE RESTRICT,
+CREATE TABLE IF NOT EXISTS stocks_research.fundamentals_yoy (
+  composite_figi  TEXT NOT NULL REFERENCES stocks_research.companies(composite_figi) ON UPDATE CASCADE ON DELETE RESTRICT,
   fiscal_period   TEXT NOT NULL,     -- e.g. '2024Q3'
   revenue_yoy     NUMERIC,
   eps_diluted_yoy NUMERIC,
@@ -134,7 +137,7 @@ CREATE TABLE IF NOT EXISTS fundamentals_yoy (
 );
 
 -- Feature definitions: parameterized, versioned, immutable identity for derived series
-CREATE TABLE IF NOT EXISTS feature_definitions (
+CREATE TABLE IF NOT EXISTS stocks_research.feature_definitions (
   feature_id   BIGSERIAL PRIMARY KEY,
   name         TEXT NOT NULL,     -- e.g. 'return_simple', 'atr'
   parameters   JSONB NOT NULL,    -- includes lookback, adjustment policy, etc.
@@ -146,25 +149,25 @@ CREATE TABLE IF NOT EXISTS feature_definitions (
 
 -- Prevent accidental duplicates for same feature identity
 CREATE UNIQUE INDEX IF NOT EXISTS feature_definitions_identity_uniq
-  ON feature_definitions (name, version, code_hash, parameters);
+  ON stocks_research.feature_definitions (name, version, code_hash, parameters);
 
 -- Daily feature values (long format; append-only by policy)
-CREATE TABLE IF NOT EXISTS feature_values_daily (
-  feature_id      BIGINT NOT NULL REFERENCES feature_definitions(feature_id) ON UPDATE CASCADE ON DELETE RESTRICT,
-  composite_figi  TEXT   NOT NULL REFERENCES companies(composite_figi) ON UPDATE CASCADE ON DELETE RESTRICT,
+CREATE TABLE IF NOT EXISTS stocks_research.feature_values_daily (
+  feature_id      BIGINT NOT NULL REFERENCES stocks_research.feature_definitions(feature_id) ON UPDATE CASCADE ON DELETE RESTRICT,
+  composite_figi  TEXT   NOT NULL REFERENCES stocks_research.companies(composite_figi) ON UPDATE CASCADE ON DELETE RESTRICT,
   trade_date      DATE   NOT NULL,
   value           NUMERIC,
   PRIMARY KEY (feature_id, composite_figi, trade_date)
 );
 
 CREATE INDEX IF NOT EXISTS feature_values_feature_date_idx
-  ON feature_values_daily (feature_id, trade_date);
+  ON stocks_research.feature_values_daily (feature_id, trade_date);
 
 CREATE INDEX IF NOT EXISTS feature_values_figi_date_idx
-  ON feature_values_daily (composite_figi, trade_date);
+  ON stocks_research.feature_values_daily (composite_figi, trade_date);
 
 -- Universes for research/backtests (eligibility rules stored as JSON)
-CREATE TABLE IF NOT EXISTS universes (
+CREATE TABLE IF NOT EXISTS stocks_research.universes (
   universe_id  BIGSERIAL PRIMARY KEY,
   name         TEXT NOT NULL UNIQUE,
   rules_json   JSONB NOT NULL,
@@ -172,10 +175,10 @@ CREATE TABLE IF NOT EXISTS universes (
 );
 
 -- Snapshots: reproducibility boundary for ML/backtests
-CREATE TABLE IF NOT EXISTS feature_snapshots (
+CREATE TABLE IF NOT EXISTS stocks_research.feature_snapshots (
   snapshot_id    BIGSERIAL PRIMARY KEY,
   snapshot_date  DATE NOT NULL,
-  universe_id    BIGINT NOT NULL REFERENCES universes(universe_id) ON UPDATE CASCADE ON DELETE RESTRICT,
+  universe_id    BIGINT NOT NULL REFERENCES stocks_research.universes(universe_id) ON UPDATE CASCADE ON DELETE RESTRICT,
   feature_ids    BIGINT[] NOT NULL,
   notes          TEXT,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -183,9 +186,9 @@ CREATE TABLE IF NOT EXISTS feature_snapshots (
 );
 
 -- Rankings produced from a snapshot (top N etc.)
-CREATE TABLE IF NOT EXISTS rankings_snapshot (
-  snapshot_id     BIGINT NOT NULL REFERENCES feature_snapshots(snapshot_id) ON UPDATE CASCADE ON DELETE CASCADE,
-  composite_figi  TEXT   NOT NULL REFERENCES companies(composite_figi) ON UPDATE CASCADE ON DELETE RESTRICT,
+CREATE TABLE IF NOT EXISTS stocks_research.rankings_snapshot (
+  snapshot_id     BIGINT NOT NULL REFERENCES stocks_research.feature_snapshots(snapshot_id) ON UPDATE CASCADE ON DELETE CASCADE,
+  composite_figi  TEXT   NOT NULL REFERENCES stocks_research.companies(composite_figi) ON UPDATE CASCADE ON DELETE RESTRICT,
   rank            INTEGER NOT NULL,
   score           NUMERIC NOT NULL,
   PRIMARY KEY (snapshot_id, composite_figi),
@@ -193,6 +196,6 @@ CREATE TABLE IF NOT EXISTS rankings_snapshot (
 );
 
 CREATE INDEX IF NOT EXISTS rankings_snapshot_rank_idx
-  ON rankings_snapshot (snapshot_id, rank);
+  ON stocks_research.rankings_snapshot (snapshot_id, rank);
 
 COMMIT;
