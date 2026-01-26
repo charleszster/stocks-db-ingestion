@@ -12,6 +12,9 @@ import psycopg2
 from psycopg2.extras import execute_batch
 
 from common import getenv, requests_get_json, iso_years_ago, iso_today
+import logging
+
+logger = logging.getLogger(__name__)
 
 """
 Phase: 3
@@ -96,6 +99,14 @@ def _run_prices_daily(conn):
     api_key = getenv("MASSIVE_API_KEY")
 
     tickers = load_tickers()
+    logger.info(
+    "Universe resolved",
+    extra={
+        "mode": os.getenv("UNIVERSE_MODE"),
+        "num_tickers": len(tickers),
+        "tickers": tickers,
+    },
+)
     from_date = iso_years_ago(YEARS)
     to_date = iso_today()
 
@@ -108,14 +119,18 @@ def _run_prices_daily(conn):
 
     print(f"Done. Total bars inserted/updated: {total}")
 
+    return {
+        "rows_upserted": total,
+        "symbols_processed": len(tickers),
+    }
+
 
 def run(conn, job_id=None):
     """
     Phase-3 ingestion entrypoint.
     The runner owns the DB connection.
     """
-    _run_prices_daily(conn)
-
+    return _run_prices_daily(conn)
 
 
 if __name__ == "__main__":

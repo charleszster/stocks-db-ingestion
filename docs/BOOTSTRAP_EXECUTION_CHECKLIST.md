@@ -88,10 +88,34 @@ pg_dump `
 -  Verify archive
 pg_restore --list backups\full_$ts.dump
 
+## Phase 3.5 — Identity Bootstrap (REQUIRED)
+
+This phase must be completed before any ingestion job is run.
+
+- Define bootstrap universe (explicit, small, written)
+  - e.g. `config/universe_dev.csv`
+
+- Run identity bootstrap script (outside ingestion runner)
+  python scripts/bootstrap/00_bootstrap_universe.py
+
+Verify identity tables populated:
+SELECT COUNT(*) FROM stocks_research.securities;
+SELECT COUNT(*) FROM stocks_research.companies;
+SELECT COUNT(*) FROM stocks_research.ticker_history;
+
+Rule:
+- The bootstrap universe must be a superset of any ingestion universe.
+
+
+
 ## Phase 4 — Ingestion Dry Runs (Empty DB)
-Run each job once, in isolation.
-- Securities master
-- Ticker history
+Run each job once, in isolation, via the ingestion runner.
+
+Note:
+- Securities and ticker history are created during the identity bootstrap phase.
+- Ingestion jobs assume identities already exist.
+
+Jobs:
 - Prices (daily)
 - Corporate actions
 - Adjustment factors

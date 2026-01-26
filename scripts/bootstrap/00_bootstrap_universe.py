@@ -1,5 +1,13 @@
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+# Resolve repo root: scripts/bootstrap/00_bootstrap_universe.py → repo root
+repo_root = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(repo_root))
+
+
 import os
 import json
 from typing import Any, Dict, List, Tuple

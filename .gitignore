@@ -11,3 +11,4 @@ data/
 .idea/
 config/universe_selected.json
 /backups/
+scripts/bootstrap/top*_tickers.json
